@@ -56,5 +56,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong on the server" });
 });
 
+const { runMigrations } = require("./migrate");
+
 const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`Ganatra Clinic API listening on port ${port}`));
+runMigrations()
+  .catch((e) => console.error("Migration runner failed:", e))
+  .finally(() => {
+    app.listen(port, () => console.log(`Ganatra Clinic API listening on port ${port}`));
+  });
