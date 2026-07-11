@@ -5,6 +5,23 @@ once you're ready to move off browser-local storage.
 
 ## Setup
 
+Every route is automatically protected by `express-async-errors`: if a
+database call fails for any reason (a constraint violation, a bad query,
+a dropped connection), that one request gets a clear error response
+instead of the failure crashing the entire server process. Common cases
+like foreign-key conflicts (trying to delete something still referenced
+elsewhere) and duplicate entries get specific, readable messages rather
+than a generic 500.
+
+Every file in `sql/` now runs automatically each time the server starts
+(see `src/migrate.js`). They're all written with `IF NOT EXISTS` guards, so
+re-running an already-applied file is a harmless no-op — deploying new code
+is enough to also apply any new migration it ships with. The manual
+`npm run migrate:*` commands below still work if you ever need them (e.g.
+against a fresh local database), but day-to-day you shouldn't need the Shell
+for this anymore.
+
+
 ```bash
 npm install
 cp .env.example .env        # then fill in DATABASE_URL and JWT_SECRET

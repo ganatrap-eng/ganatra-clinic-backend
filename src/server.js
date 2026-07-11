@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+require("express-async-errors"); // must load before any router is created — patches Express to catch rejected promises in every async route automatically, so a database error never crashes the whole server, just that one request
 const cors = require("cors");
 const path = require("path");
 
@@ -53,6 +54,14 @@ app.use("/api/patients", patientsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
+  if (err.code === "23503") {
+    // foreign_key_violation — e.g. trying to delete something another record still points to
+    return res.status(409).json({ error: "This record is still linked to other data and can't be deleted directly. Remove or reassign the linked records first." });
+  }
+  if (err.code === "23505") {
+    // unique_violation
+    return res.status(409).json({ error: "That already exists — check for a duplicate entry." });
+  }
   res.status(500).json({ error: "Something went wrong on the server" });
 });
 
