@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
 const { pool } = require("../db");
 const { createOtp, verifyOtp, sendEmailOtp, sendSmsOtp } = require("../utils/otp");
 const { fullPermissions, emptyPermissions } = require("../utils/permissions");
@@ -10,6 +11,13 @@ const router = express.Router();
 const ADMIN_USER_ID = "pratik";
 const ADMIN_EMAIL = "ganatra.p@gmail.com";
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+// Slows down guessing attacks against passwords and OTP codes without
+// getting in the way of a real person who mistypes once or twice.
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts — wait 15 minutes and try again." } });
+const registerLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Too many sign-up attempts — wait 15 minutes and try again." } });
+const otpVerifyLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts — wait 15 minutes and try again." } });
+const otpSendLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests — wait 15 minutes and try again." } });
 
 function issueToken(user) {
   return jwt.sign(
@@ -23,7 +31,7 @@ function publicUser(user) {
 }
 
 // POST /api/auth/register  { userId, password, name, email?, mobile? }
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   const { userId, password, name, email, mobile } = req.body;
   if (!userId || !userId.trim()) return res.status(400).json({ error: "Choose a user ID." });
   if (!PASSWORD_RULE.test(password || "")) {
@@ -46,8 +54,7 @@ router.post("/register", async (req, res) => {
     const result = await sendEmailOtp(email, code);
     return res.status(201).json({
       requiresOtp: true, channel: "email", userId: user.user_id,
-      message: result.sent ? "A verification code was emailed to you." : "Test mode: no email service is connected yet, so here's the code directly.",
-      devCode: result.devCode,
+      message: result.sent ? "A verification code was emailed to you." : "A code was generated — check the server logs (email delivery isn't connected yet).",
     });
   }
 
@@ -67,7 +74,7 @@ router.post("/register", async (req, res) => {
 });
 
 // POST /api/auth/verify-admin-otp  { userId, code }
-router.post("/verify-admin-otp", async (req, res) => {
+router.post("/verify-admin-otp", otpVerifyLimiter, async (req, res) => {
   const { userId, code } = req.body;
   const r = await pool.query("SELECT * FROM users WHERE user_id = $1", [userId]);
   const user = r.rows[0];
@@ -82,7 +89,7 @@ router.post("/verify-admin-otp", async (req, res) => {
 });
 
 // POST /api/auth/login  { userId, password }
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const { userId, password } = req.body;
   if (!userId || !password) return res.status(400).json({ error: "User ID and password are required" });
 
@@ -100,7 +107,7 @@ router.post("/login", async (req, res) => {
 });
 
 // POST /api/auth/forgot-userid  { mobile } — sends an OTP to that mobile if a registered account uses it
-router.post("/forgot-userid", async (req, res) => {
+router.post("/forgot-userid", otpSendLimiter, async (req, res) => {
   const { mobile } = req.body;
   if (!mobile || !mobile.trim()) return res.status(400).json({ error: "Enter your registered mobile number." });
   const r = await pool.query("SELECT * FROM users WHERE mobile = $1", [mobile.trim()]);
@@ -111,13 +118,12 @@ router.post("/forgot-userid", async (req, res) => {
   const code = await createOtp(pool, user.id, "userid_recovery");
   const result = await sendSmsOtp(mobile.trim(), code);
   res.json({
-    message: result.sent ? "A code was texted to that number." : "Test mode: no SMS service is connected yet, so here's the code directly.",
-    devCode: result.devCode,
+    message: result.sent ? "A code was texted to that number." : "A code was generated — check the server logs (SMS delivery isn't connected yet).",
   });
 });
 
 // POST /api/auth/verify-userid-otp  { mobile, code } — reveals the User ID once the code is confirmed
-router.post("/verify-userid-otp", async (req, res) => {
+router.post("/verify-userid-otp", otpVerifyLimiter, async (req, res) => {
   const { mobile, code } = req.body;
   const r = await pool.query("SELECT * FROM users WHERE mobile = $1", [(mobile || "").trim()]);
   const user = r.rows[0];
@@ -128,7 +134,7 @@ router.post("/verify-userid-otp", async (req, res) => {
 });
 
 // POST /api/auth/forgot-password  { userId }  — sends an SMS OTP to the registered mobile
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", otpSendLimiter, async (req, res) => {
   const { userId } = req.body;
   const r = await pool.query("SELECT * FROM users WHERE user_id = $1", [userId]);
   const user = r.rows[0];
@@ -140,13 +146,12 @@ router.post("/forgot-password", async (req, res) => {
   const code = await createOtp(pool, user.id, "password_reset");
   const result = await sendSmsOtp(user.mobile, code);
   res.json({
-    message: result.sent ? "A code was texted to your registered mobile number." : "Test mode: no SMS service is connected yet, so here's the code directly.",
-    devCode: result.devCode,
+    message: result.sent ? "A code was texted to your registered mobile number." : "A code was generated — check the server logs (SMS delivery isn't connected yet).",
   });
 });
 
 // POST /api/auth/reset-password  { userId, code, newPassword }
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", otpVerifyLimiter, async (req, res) => {
   const { userId, code, newPassword } = req.body;
   if (!PASSWORD_RULE.test(newPassword || "")) {
     return res.status(400).json({ error: "Password must be at least 8 characters and include a letter, a number, and a special character." });

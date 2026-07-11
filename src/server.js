@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 require("express-async-errors"); // must load before any router is created — patches Express to catch rejected promises in every async route automatically, so a database error never crashes the whole server, just that one request
+const helmet = require("helmet");
 const cors = require("cors");
 const path = require("path");
 
@@ -23,11 +24,17 @@ const auditLogRoutes = require("./routes/auditLog");
 const patientsRoutes = require("./routes/patients");
 
 const app = express();
+app.set("trust proxy", 1); // Render sits behind a reverse proxy — without this, every visitor looks like the same IP to express-rate-limit, making the rate limits useless
+app.use(helmet()); // standard security headers: removes the "X-Powered-By: Express" fingerprint, blocks MIME-sniffing, sets sensible defaults for the rest
 const corsOrigins = (process.env.CORS_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
 const allowAllOrigins = corsOrigins.length === 0 || corsOrigins.includes("*");
+if (allowAllOrigins) {
+  console.warn("[security] CORS_ORIGIN is not restricted — any website can call this API from a browser. Set it to your exact frontend URL once you're ready to lock this down.");
+}
 app.use(cors({ origin: allowAllOrigins ? true : corsOrigins }));
 app.use(express.json({ limit: "2mb" }));
-app.use("/uploads", express.static(path.join(process.cwd(), process.env.UPLOAD_DIR || "uploads")));
+// Uploaded photos are no longer served from a public static folder — see
+// GET /api/upload/:filename below, which requires a valid login.
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -52,8 +59,22 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/audit-log", auditLogRoutes);
 app.use("/api/patients", patientsRoutes);
 
+// Anything that reaches here matched no route — respond with plain JSON,
+// never Express's default HTML error page (which can hint at framework
+// internals in some configurations).
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 app.use((err, req, res, next) => {
+  // Full detail (including any file paths, table/column names, or stack
+  // trace) goes only to Render's server logs — never to the client. This
+  // is deliberate: a crash should never hand an attacker a map of the
+  // system.
   console.error(err);
+  if (err.message === "Only image files are allowed") {
+    return res.status(400).json({ error: err.message });
+  }
   if (err.code === "23503") {
     // foreign_key_violation — e.g. trying to delete something another record still points to
     return res.status(409).json({ error: "This record is still linked to other data and can't be deleted directly. Remove or reassign the linked records first." });
