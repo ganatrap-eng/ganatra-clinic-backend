@@ -85,6 +85,10 @@ app.use((err, req, res, next) => {
     // unique_violation
     return res.status(409).json({ error: "That already exists — check for a duplicate entry." });
   }
+  if (err.code === "23514") {
+    // check_violation — a value didn't match a database rule (e.g. an allowed list)
+    return res.status(400).json({ error: "That value isn't allowed for this field. Double-check what you entered." });
+  }
   res.status(500).json({ error: "Something went wrong on the server" });
 });
 
