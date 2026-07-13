@@ -63,13 +63,22 @@ router.get("/balance-sheet", requirePermission("statements", "view"), logAccess(
   if (!fy) return res.status(400).json({ error: "fy query param is required" });
   const { end, start } = fyRange(fy);
 
+  const loanTaken = await sumUpTo("other_balance_items", "txn_date", "amount", end, "AND category='unsecured_loan' AND txn_type='Taken'");
+  const loanRepaid = await sumUpTo("other_balance_items", "txn_date", "amount", end, "AND category='unsecured_loan' AND txn_type='Repaid'");
+  const depositGiven = await sumUpTo("other_balance_items", "txn_date", "amount", end, "AND category='security_deposit' AND txn_type='Given'");
+  const depositRefunded = await sumUpTo("other_balance_items", "txn_date", "amount", end, "AND category='security_deposit' AND txn_type='Refunded'");
+  const unsecuredLoan = loanTaken - loanRepaid;
+  const securityDeposit = depositGiven - depositRefunded;
+
   const cashIn = (await sumUpTo("collections", "collection_date", "amount_collected", end))
     + (await sumUpTo("referrals", "referral_date", "amount", end))
     + (await sumUpTo("gifts", "gift_date", "amount", end))
-    + (await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Introduced'"));
+    + (await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Introduced'"))
+    + loanTaken + depositRefunded;
   const cashOut = (await sumUpTo("expenses", "expense_date", "amount", end))
     + (await sumUpTo("doctor_pays", "pay_date", "amount", end))
-    + (await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Drawings'"));
+    + (await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Drawings'"))
+    + loanRepaid + depositGiven;
   const assetsR = await pool.query("SELECT * FROM fixed_assets WHERE purchase_date <= $1", [end]);
   const assetsCostToDate = assetsR.rows.reduce((s, a) => s + Number(a.cost), 0);
   const cashBank = cashIn - cashOut - assetsCostToDate;
@@ -78,7 +87,7 @@ router.get("/balance-sheet", requirePermission("statements", "view"), logAccess(
 
   const allAssetsR = await pool.query("SELECT * FROM fixed_assets");
   const fixedAssetsNet = allAssetsR.rows.reduce((s, a) => s + assetWDVAsOf(a, end).wdv, 0);
-  const totalAssets = cashBank + debtors + fixedAssetsNet;
+  const totalAssets = cashBank + debtors + fixedAssetsNet + securityDeposit;
 
   const capIntroduced = await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Introduced'");
   const drawings = await sumUpTo("capital_transactions", "txn_date", "amount", end, "AND txn_type = 'Drawings'");
@@ -87,12 +96,14 @@ router.get("/balance-sheet", requirePermission("statements", "view"), logAccess(
     + (await sumUpTo("doctor_pays", "pay_date", "amount", end))
     + allAssetsR.rows.reduce((s, a) => s + assetWDVAsOf(a, end).cumDep, 0);
   const closingCapital = capIntroduced - drawings + (cumulativeIncome - cumulativeExpense);
+  const totalLiabAndCapital = unsecuredLoan + closingCapital;
 
   res.json({
     fy, asOf: end,
-    assets: { cashBank, debtors, fixedAssetsNet, total: totalAssets },
+    assets: { cashBank, debtors, fixedAssetsNet, securityDeposit, total: totalAssets },
+    liabilities: { unsecuredLoan },
     capital: { closingCapital },
-    ties: Math.abs(closingCapital - totalAssets) < 1,
+    ties: Math.abs(totalLiabAndCapital - totalAssets) < 1,
   });
 });
 

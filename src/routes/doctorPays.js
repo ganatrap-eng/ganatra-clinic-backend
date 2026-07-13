@@ -22,6 +22,17 @@ router.post("/", requirePermission("doctorPay", "write"), logAccess("doctorPay")
   res.status(201).json(r.rows[0]);
 });
 
+router.put("/:id", requirePermission("doctorPay", "edit"), logAccess("doctorPay"), async (req, res) => {
+  const { doctorId, date, amount } = req.body;
+  if (!doctorId || !date || !amount) return res.status(400).json({ error: "doctorId, date, and amount are required" });
+  const r = await pool.query(
+    `UPDATE doctor_pays SET doctor_id=$1, pay_date=$2, amount=$3 WHERE id=$4 RETURNING *`,
+    [doctorId, date, Number(amount), req.params.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Pay entry not found" });
+  res.json(r.rows[0]);
+});
+
 router.delete("/:id", requirePermission("doctorPay", "delete"), logAccess("doctorPay"), async (req, res) => {
   await pool.query("DELETE FROM doctor_pays WHERE id = $1", [req.params.id]);
   res.status(204).end();

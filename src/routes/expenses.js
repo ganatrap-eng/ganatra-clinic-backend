@@ -41,6 +41,19 @@ router.post("/", requirePermission("expenses", "write"), logAccess("expenses"), 
   res.status(201).json(r.rows[0]);
 });
 
+router.put("/:id", requirePermission("expenses", "edit"), logAccess("expenses"), async (req, res) => {
+  const { date, category, amount, narration, imageUrl } = req.body;
+  if (!date || !CATEGORIES.includes(category) || !amount) {
+    return res.status(400).json({ error: "date, a valid category, and amount are required" });
+  }
+  const r = await pool.query(
+    `UPDATE expenses SET expense_date=$1, category=$2, amount=$3, narration=$4, image_url=$5 WHERE id=$6 RETURNING *`,
+    [date, category, Number(amount), narration || null, imageUrl || null, req.params.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Expense not found" });
+  res.json(r.rows[0]);
+});
+
 router.delete("/:id", requirePermission("expenses", "delete"), logAccess("expenses"), async (req, res) => {
   await pool.query("DELETE FROM expenses WHERE id = $1", [req.params.id]);
   res.status(204).end();

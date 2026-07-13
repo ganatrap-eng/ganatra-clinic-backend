@@ -32,6 +32,19 @@ router.post("/", requirePermission("assets", "write"), logAccess("assets"), asyn
   res.status(201).json(r.rows[0]);
 });
 
+router.put("/:id", requirePermission("assets", "edit"), logAccess("assets"), async (req, res) => {
+  const { name, block, rate, purchaseDate, cost } = req.body;
+  if (!name || !block || !rate || !purchaseDate || !cost) {
+    return res.status(400).json({ error: "name, block, rate, purchaseDate, and cost are required" });
+  }
+  const r = await pool.query(
+    `UPDATE fixed_assets SET name=$1, block=$2, rate=$3, purchase_date=$4, cost=$5 WHERE id=$6 RETURNING *`,
+    [name, block, Number(rate), purchaseDate, Number(cost), req.params.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Asset not found" });
+  res.json(r.rows[0]);
+});
+
 router.delete("/:id", requirePermission("assets", "delete"), logAccess("assets"), async (req, res) => {
   await pool.query("DELETE FROM fixed_assets WHERE id = $1", [req.params.id]);
   res.status(204).end();

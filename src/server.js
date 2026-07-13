@@ -22,6 +22,7 @@ const uploadRoutes = require("./routes/upload");
 const adminRoutes = require("./routes/admin");
 const auditLogRoutes = require("./routes/auditLog");
 const patientsRoutes = require("./routes/patients");
+const otherBalanceRoutes = require("./routes/otherBalance");
 
 const app = express();
 app.set("trust proxy", 1); // Render sits behind a reverse proxy — without this, every visitor looks like the same IP to express-rate-limit, making the rate limits useless
@@ -58,6 +59,7 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/audit-log", auditLogRoutes);
 app.use("/api/patients", patientsRoutes);
+app.use("/api/other-balance", otherBalanceRoutes);
 
 // Anything that reaches here matched no route — respond with plain JSON,
 // never Express's default HTML error page (which can hint at framework
