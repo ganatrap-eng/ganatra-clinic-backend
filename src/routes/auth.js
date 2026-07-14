@@ -8,8 +8,8 @@ const { fullPermissions, emptyPermissions } = require("../utils/permissions");
 
 const router = express.Router();
 
-const ADMIN_USER_ID = "pratik";
-const ADMIN_EMAIL = "ganatra.p@gmail.com";
+const ADMIN_USER_ID = process.env.ADMIN_BOOTSTRAP_USER_ID || "pratik";
+const ADMIN_EMAIL = (process.env.ADMIN_BOOTSTRAP_EMAIL || "ganatra.p@gmail.com").toLowerCase();
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 // Slows down guessing attacks against passwords and OTP codes without

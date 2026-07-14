@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 require("express-async-errors"); // must load before any router is created — patches Express to catch rejected promises in every async route automatically, so a database error never crashes the whole server, just that one request
 const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const cors = require("cors");
 const path = require("path");
 
@@ -34,6 +35,10 @@ if (allowAllOrigins) {
 }
 app.use(cors({ origin: allowAllOrigins ? true : corsOrigins }));
 app.use(express.json({ limit: "2mb" }));
+// A generous ceiling across the whole API — this isn't meant to affect real
+// usage (a clinic's normal traffic is nowhere near this), just to blunt any
+// scraping or automated-abuse attempt, even from a valid logged-in session.
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests — please slow down and try again shortly." } }));
 // Uploaded photos are no longer served from a public static folder — see
 // GET /api/upload/:filename below, which requires a valid login.
 
