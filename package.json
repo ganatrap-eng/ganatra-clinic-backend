@@ -11,7 +11,8 @@
     "migrate:permissions": "psql \"$DATABASE_URL\" -f sql/002_permissions.sql",
     "migrate:audit": "psql \"$DATABASE_URL\" -f sql/003_audit_log.sql",
     "migrate:gifts": "psql \"$DATABASE_URL\" -f sql/004_gift_amount.sql",
-    "migrate:roles": "psql \"$DATABASE_URL\" -f sql/007_free_text_roles.sql"
+    "migrate:roles": "psql \"$DATABASE_URL\" -f sql/007_free_text_roles.sql",
+    "migrate:patients": "psql \"$DATABASE_URL\" -f sql/008_patient_master.sql"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
