@@ -7,6 +7,12 @@ const { randomUUID } = require("crypto");
 const router = express.Router();
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
 
+// Render's filesystem is ephemeral — it resets on every deploy, so this
+// directory may not exist yet even if it did last time the server ran.
+// Guarantee it exists at startup rather than relying on a placeholder file
+// surviving every upload to GitHub.
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => cb(null, `${randomUUID()}${path.extname(file.originalname)}`),
