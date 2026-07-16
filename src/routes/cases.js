@@ -4,6 +4,8 @@ const { requirePermission } = require("../middleware/permissions");
 const { logAccess } = require("../middleware/audit");
 const router = express.Router();
 
+const VALID_MODES = ["Cash", "UPI", "Card", "Other"];
+
 // GET /api/cases?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get("/", requirePermission("cases", "view"), logAccess("cases"), async (req, res) => {
   const { from, to } = req.query;
@@ -30,10 +32,19 @@ router.get("/", requirePermission("cases", "view"), logAccess("cases"), async (r
   res.json(withMeds);
 });
 
-// POST /api/cases  { date, patientName, phone, briefHistory, doctorId, shift, externalPrescription, imageUrl, medicines: [{name, qty, price}] }
+// POST /api/cases  { date, patientName, phone, briefHistory, doctorId, shift, externalPrescription, imageUrl,
+//                     medicines: [{name, qty, price}], amountDue?, mode? }
+// Creating a case always creates a matching Collections entry in the same
+// transaction, so every case has somewhere for its payment to be recorded —
+// if amountDue/mode aren't given (the normal single-entry form doesn't ask
+// for them), it's created as a "pending" entry: amount due 0, mode blank,
+// ready for the front desk to fill in once payment is taken.
 router.post("/", requirePermission("cases", "write"), logAccess("cases"), async (req, res) => {
-  const { date, patientName, phone, briefHistory, doctorId, shift, externalPrescription, imageUrl, medicines } = req.body;
+  const { date, patientName, phone, briefHistory, doctorId, shift, externalPrescription, imageUrl, medicines, amountDue, mode } = req.body;
   if (!date || !patientName) return res.status(400).json({ error: "date and patientName are required" });
+  if (mode !== undefined && mode !== null && mode !== "" && !VALID_MODES.includes(mode)) {
+    return res.status(400).json({ error: `mode must be one of ${VALID_MODES.join(", ")}` });
+  }
 
   const client = await pool.connect();
   try {
@@ -55,8 +66,15 @@ router.post("/", requirePermission("cases", "write"), logAccess("cases"), async 
         [newCase.id, m.name, Number(m.qty) || 0, Number(m.price) || 0]
       );
     }
+
+    const collR = await client.query(
+      `INSERT INTO collections (case_id, case_no, patient_name, phone, collection_date, amount_due, amount_collected, mode, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8) RETURNING *`,
+      [newCase.id, caseNo, patientName, phone || null, date, Number(amountDue) || 0, mode || null, req.user.sub]
+    );
+
     await client.query("COMMIT");
-    res.status(201).json(newCase);
+    res.status(201).json({ ...newCase, medicines: (medicines || []).filter((m) => m.name), collection: collR.rows[0] });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err);
@@ -87,6 +105,11 @@ router.put("/:id", requirePermission("cases", "edit"), logAccess("cases"), async
         [req.params.id, m.name, Number(m.qty) || 0, Number(m.price) || 0]
       );
     }
+    // Keep any linked collection entries' name/phone/date in sync with a corrected case record.
+    await client.query(
+      `UPDATE collections SET patient_name=$1, phone=$2, collection_date=$3, case_no=$4 WHERE case_id=$5`,
+      [patientName, phone || null, date, caseR.rows[0].case_no, req.params.id]
+    );
     await client.query("COMMIT");
     res.json(caseR.rows[0]);
   } catch (err) {

@@ -5,6 +5,7 @@ const rateLimit = require("express-rate-limit");
 const { pool } = require("../db");
 const { createOtp, verifyOtp, sendEmailOtp, sendSmsOtp } = require("../utils/otp");
 const { fullPermissions, emptyPermissions } = require("../utils/permissions");
+const { authenticate } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ function issueToken(user) {
   );
 }
 function publicUser(user) {
-  return { userId: user.user_id, name: user.name, role: user.role, permissions: user.permissions, status: user.status };
+  return { userId: user.user_id, name: user.name, role: user.role, permissions: user.permissions, status: user.status, avatarUrl: user.avatar_url || null };
 }
 
 // POST /api/auth/register  { userId, password, name, email?, mobile? }
@@ -164,6 +165,21 @@ router.post("/reset-password", otpVerifyLimiter, async (req, res) => {
   const hash = await bcrypt.hash(newPassword, 12);
   await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [hash, user.id]);
   res.json({ message: "Password updated — you can log in now." });
+});
+
+// PUT /api/auth/me/avatar  { imageUrl }
+// Deliberately has no :id in the URL and never reads one from the body —
+// req.user.sub (set by the authenticate middleware from the verified JWT)
+// is the ONLY thing that decides whose row gets updated. This is what makes
+// it structurally impossible for one logged-in user to overwrite another's
+// avatar, even by tampering with the request.
+router.put("/me/avatar", authenticate, async (req, res) => {
+  const { imageUrl } = req.body;
+  if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("/api/upload/")) {
+    return res.status(400).json({ error: "A valid uploaded image URL is required." });
+  }
+  const r = await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING avatar_url", [imageUrl, req.user.sub]);
+  res.json({ avatarUrl: r.rows[0].avatar_url });
 });
 
 module.exports = router;

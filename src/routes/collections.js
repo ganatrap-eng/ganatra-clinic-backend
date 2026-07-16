@@ -4,6 +4,8 @@ const { requirePermission } = require("../middleware/permissions");
 const { logAccess } = require("../middleware/audit");
 const router = express.Router();
 
+const VALID_MODES = ["Cash", "UPI", "Card", "Other"];
+
 router.get("/", requirePermission("collections", "view"), logAccess("collections"), async (req, res) => {
   const { from, to } = req.query;
   const params = [];
@@ -35,6 +37,9 @@ router.post("/", requirePermission("collections", "write"), logAccess("collectio
   if (!patientName || !date || amountDue === undefined) {
     return res.status(400).json({ error: "patientName, date, and amountDue are required" });
   }
+  if (mode && !VALID_MODES.includes(mode)) {
+    return res.status(400).json({ error: `mode must be one of ${VALID_MODES.join(", ")}` });
+  }
   const r = await pool.query(
     `INSERT INTO collections (case_id, case_no, patient_name, phone, collection_date, amount_due, amount_collected, mode, image_url, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
@@ -47,6 +52,9 @@ router.put("/:id", requirePermission("collections", "edit"), logAccess("collecti
   const { caseId, caseNo, patientName, phone, date, amountDue, amountCollected, mode, imageUrl } = req.body;
   if (!patientName || !date || amountDue === undefined) {
     return res.status(400).json({ error: "patientName, date, and amountDue are required" });
+  }
+  if (mode && !VALID_MODES.includes(mode)) {
+    return res.status(400).json({ error: `mode must be one of ${VALID_MODES.join(", ")}` });
   }
   const r = await pool.query(
     `UPDATE collections SET case_id=$1, case_no=$2, patient_name=$3, phone=$4, collection_date=$5,
