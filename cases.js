@@ -111,7 +111,8 @@ router.put("/:id", requirePermission("cases", "edit"), logAccess("cases"), async
       [patientName, phone || null, date, caseR.rows[0].case_no, req.params.id]
     );
     await client.query("COMMIT");
-    res.json(caseR.rows[0]);
+    const doctorR = doctorId ? await pool.query("SELECT name FROM doctors WHERE id = $1", [doctorId]) : { rows: [] };
+    res.json({ ...caseR.rows[0], doctor_name: doctorR.rows[0]?.name || null, medicines: (medicines || []).filter((m) => m.name).map((m) => ({ medicine_name: m.name, qty: Number(m.qty) || 0, unit_price: Number(m.price) || 0 })) });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err);
