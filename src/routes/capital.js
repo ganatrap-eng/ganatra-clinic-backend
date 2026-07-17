@@ -21,6 +21,19 @@ router.post("/", requirePermission("statements", "write"), logAccess("statements
   res.status(201).json(r.rows[0]);
 });
 
+router.put("/:id", requirePermission("statements", "edit"), logAccess("statements"), async (req, res) => {
+  const { date, type, amount, note } = req.body;
+  if (!date || !["Introduced", "Drawings"].includes(type) || !amount) {
+    return res.status(400).json({ error: "date, a valid type (Introduced/Drawings), and amount are required" });
+  }
+  const r = await pool.query(
+    `UPDATE capital_transactions SET txn_date=$1, txn_type=$2, amount=$3, note=$4 WHERE id=$5 RETURNING *`,
+    [date, type, Number(amount), note || null, req.params.id]
+  );
+  if (r.rowCount === 0) return res.status(404).json({ error: "Entry not found" });
+  res.json(r.rows[0]);
+});
+
 router.delete("/:id", requirePermission("statements", "delete"), logAccess("statements"), async (req, res) => {
   await pool.query("DELETE FROM capital_transactions WHERE id = $1", [req.params.id]);
   res.status(204).end();

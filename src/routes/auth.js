@@ -28,7 +28,7 @@ function issueToken(user) {
   );
 }
 function publicUser(user) {
-  return { userId: user.user_id, name: user.name, role: user.role, permissions: user.permissions, status: user.status, avatarUrl: user.avatar_url || null };
+  return { userId: user.user_id, name: user.name, role: user.role, permissions: user.permissions, status: user.status, avatarUrl: user.avatar_url || null, doctorId: user.doctor_id || null };
 }
 
 // POST /api/auth/register  { userId, password, name, email?, mobile? }
@@ -55,7 +55,12 @@ router.post("/register", registerLimiter, async (req, res) => {
     const result = await sendEmailOtp(email, code);
     return res.status(201).json({
       requiresOtp: true, channel: "email", userId: user.user_id,
-      message: result.sent ? "A verification code was emailed to you." : "A code was generated — check the server logs (email delivery isn't connected yet).",
+      message: result.sent
+        ? "A verification code was emailed to you."
+        : result.deliveryError
+          ? "We tried to email your code but delivery failed — the code is shown below and in the server logs."
+          : "A code was generated — check below (email delivery isn't connected yet).",
+      devCode: result.sent ? undefined : result.devCode,
     });
   }
 
@@ -119,7 +124,12 @@ router.post("/forgot-userid", otpSendLimiter, async (req, res) => {
   const code = await createOtp(pool, user.id, "userid_recovery");
   const result = await sendSmsOtp(mobile.trim(), code);
   res.json({
-    message: result.sent ? "A code was texted to that number." : "A code was generated — check the server logs (SMS delivery isn't connected yet).",
+    message: result.sent
+      ? "A code was texted to that number."
+      : result.deliveryError
+        ? "We tried to text your code but delivery failed — the code is shown below and in the server logs."
+        : "A code was generated — check below (SMS delivery isn't connected yet).",
+    devCode: result.sent ? undefined : result.devCode,
   });
 });
 
@@ -147,7 +157,12 @@ router.post("/forgot-password", otpSendLimiter, async (req, res) => {
   const code = await createOtp(pool, user.id, "password_reset");
   const result = await sendSmsOtp(user.mobile, code);
   res.json({
-    message: result.sent ? "A code was texted to your registered mobile number." : "A code was generated — check the server logs (SMS delivery isn't connected yet).",
+    message: result.sent
+      ? "A code was texted to your registered mobile number."
+      : result.deliveryError
+        ? "We tried to text your code but delivery failed — the code is shown below and in the server logs."
+        : "A code was generated — check below (SMS delivery isn't connected yet).",
+    devCode: result.sent ? undefined : result.devCode,
   });
 });
 

@@ -43,20 +43,40 @@ async function sendEmailOtp(email, code) {
     console.log(`[DEMO MODE] Email OTP for ${email}: ${code}`);
     return { sent: false, devCode: code };
   }
-  const nodemailer = require("nodemailer");
-  const transport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-  await transport.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: email,
-    subject: "Your Ganatra Clinic verification code",
-    text: `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
-  });
-  return { sent: true };
+  try {
+    const nodemailer = require("nodemailer");
+    const transport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+    await transport.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email,
+      subject: "Your Ganatra Clinic verification code",
+      text: `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+    });
+    return { sent: true };
+  } catch (e) {
+    // A misconfigured or temporarily-down email provider shouldn't lock
+    // anyone out — fall back to the same logged/devCode path as demo mode,
+    // so an Admin can still relay the code manually.
+    console.error(`[email OTP] delivery failed, falling back to logged code: ${e.message}`);
+    console.log(`[FALLBACK] Email OTP for ${email}: ${code}`);
+    return { sent: false, devCode: code, deliveryError: true };
+  }
+}
+
+/** Twilio requires E.164 (+<country code><number>). Mobiles in this app are
+ * stored as plain 10-digit Indian numbers, so assume +91 unless the number
+ * already looks like it has a country code. */
+function toE164India(mobile) {
+  const digits = String(mobile || "").replace(/[^\d+]/g, "");
+  if (digits.startsWith("+")) return digits;
+  const trimmed = digits.replace(/^0+/, "");
+  if (trimmed.length === 10) return `+91${trimmed}`;
+  return `+${trimmed}`;
 }
 
 async function sendSmsOtp(mobile, code) {
@@ -64,13 +84,19 @@ async function sendSmsOtp(mobile, code) {
     console.log(`[DEMO MODE] SMS OTP for ${mobile}: ${code}`);
     return { sent: false, devCode: code };
   }
-  const twilio = require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-  await twilio.messages.create({
-    from: process.env.TWILIO_FROM_NUMBER,
-    to: mobile,
-    body: `Your Ganatra Clinic verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
-  });
-  return { sent: true };
+  try {
+    const twilio = require("twilio")(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    await twilio.messages.create({
+      from: process.env.TWILIO_FROM_NUMBER,
+      to: toE164India(mobile),
+      body: `Your Ganatra Clinic verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+    });
+    return { sent: true };
+  } catch (e) {
+    console.error(`[SMS OTP] delivery failed, falling back to logged code: ${e.message}`);
+    console.log(`[FALLBACK] SMS OTP for ${mobile}: ${code}`);
+    return { sent: false, devCode: code, deliveryError: true };
+  }
 }
 
 module.exports = { createOtp, verifyOtp, sendEmailOtp, sendSmsOtp, DEMO_OTP_MODE };
