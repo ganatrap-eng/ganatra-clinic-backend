@@ -10,8 +10,11 @@ const { recordAccess } = require("../middleware/audit");
 
 const router = express.Router();
 
-const ADMIN_USER_ID = process.env.ADMIN_BOOTSTRAP_USER_ID || "pratik";
-const ADMIN_EMAIL = (process.env.ADMIN_BOOTSTRAP_EMAIL || "ganatra.p@gmail.com").toLowerCase();
+const ADMIN_USER_ID = process.env.ADMIN_BOOTSTRAP_USER_ID || null;
+const ADMIN_EMAIL = process.env.ADMIN_BOOTSTRAP_EMAIL ? process.env.ADMIN_BOOTSTRAP_EMAIL.toLowerCase() : null;
+if (!ADMIN_USER_ID || !ADMIN_EMAIL) {
+  console.warn("[startup] ADMIN_BOOTSTRAP_USER_ID / ADMIN_BOOTSTRAP_EMAIL are not set — no account can self-activate as Admin until these are configured in the environment.");
+}
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 // Slows down guessing attacks against passwords and OTP codes without
@@ -49,7 +52,7 @@ router.post("/register", registerLimiter, async (req, res) => {
     const r = await pool.query(
       `INSERT INTO users (user_id, password_hash, name, role, email, status, permissions)
        VALUES ($1,$2,$3,'Admin',$4,'pending_otp',$5) RETURNING *`,
-      [userId, passwordHash, name || "Dr. Bhavisha Pratik Ganatra", email, JSON.stringify(fullPermissions())]
+      [userId, passwordHash, name || "Admin", email, JSON.stringify(fullPermissions())]
     );
     const user = r.rows[0];
     const code = await createOtp(pool, user.id, "admin_verify");

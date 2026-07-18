@@ -1,7 +1,7 @@
 {
   "name": "ganatra-clinic-backend",
   "version": "1.0.0",
-  "description": "API backend for the Ganatra Clinic ERP",
+  "description": "API backend for a Clinic ERP (accounting & practice management)",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
