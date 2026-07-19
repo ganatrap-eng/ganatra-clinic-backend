@@ -28,14 +28,20 @@ function daysBetween(a, b) {
   return Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
 }
 
-/** Depreciation for a single asset for a single financial year (Sec. 32, WDV method). */
-function assetDepForFY(asset, fy) {
+/** Depreciation for a single asset for a single financial year (Sec. 32, WDV method).
+ *  `knownWdvStart`, if given, is used directly instead of being recomputed —
+ *  this is what makes assetWDVAsOf's year-by-year walk linear instead of
+ *  exponential (see there). Callers computing a single year in isolation
+ *  (e.g. statements.js) can omit it and it's derived the slower way, which
+ *  is fine for a one-off lookup. */
+function assetDepForFY(asset, fy, knownWdvStart) {
   const purchaseFY = fyOf(asset.purchase_date);
   if (parseInt(fy.split("-")[0]) < parseInt(purchaseFY.split("-")[0])) {
     return { dep: 0, wdvStart: 0, wdvEnd: 0, applicable: false };
   }
   let wdvStart;
-  if (fy === purchaseFY) wdvStart = Number(asset.cost);
+  if (knownWdvStart !== undefined) wdvStart = knownWdvStart;
+  else if (fy === purchaseFY) wdvStart = Number(asset.cost);
   else wdvStart = assetWDVAsOf(asset, fyRange(prevFY(fy)).end).wdv;
 
   let dep;
@@ -49,7 +55,10 @@ function assetDepForFY(asset, fy) {
   return { dep, wdvStart, wdvEnd: wdvStart - dep, applicable: true };
 }
 
-/** Written-down value of an asset as of any date, walking FY by FY from purchase. */
+/** Written-down value of an asset as of any date, walking FY by FY from
+ *  purchase — O(years since purchase), not exponential (see assetDepForFY:
+ *  each step passes its own running WDV forward instead of asking
+ *  assetDepForFY to re-derive it by re-walking everything before it). */
 function assetWDVAsOf(asset, targetDate) {
   if (asset.purchase_date > targetDate) return { wdv: 0, cumDep: 0, acquired: false };
   const purchaseFY = fyOf(asset.purchase_date);
@@ -59,7 +68,7 @@ function assetWDVAsOf(asset, targetDate) {
   let guard = 0;
   while (guard < 60) {
     guard++;
-    const r = assetDepForFY(asset, fy);
+    const r = assetDepForFY(asset, fy, wdv);
     wdv = r.wdvEnd;
     if (fy === targetFY) break;
     fy = nextFY(fy);

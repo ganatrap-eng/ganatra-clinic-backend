@@ -54,8 +54,14 @@ router.post("/", requirePermission("cases", "write"), logAccess("cases"), async 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const countR = await client.query("SELECT COUNT(*)::int AS n FROM cases");
-    const caseNo = `CASE-${String(countR.rows[0].n + 1).padStart(4, "0")}`;
+    // Uses the highest existing case number, not a row count — a row count
+    // would regenerate an already-used number (and fail on the UNIQUE
+    // constraint) the moment any case has ever been deleted, since the
+    // count drops but old case numbers don't get reused or renumbered.
+    const maxR = await client.query(
+      `SELECT COALESCE(MAX(SUBSTRING(case_no FROM 6)::int), 0) AS n FROM cases WHERE case_no ~ '^CASE-[0-9]+$'`
+    );
+    const caseNo = `CASE-${String(maxR.rows[0].n + 1).padStart(4, "0")}`;
 
     const caseR = await client.query(
       `INSERT INTO cases (case_no, case_date, patient_name, phone, brief_history, doctor_id, shift, external_prescription, image_url, created_by,
