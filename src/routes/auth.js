@@ -6,11 +6,15 @@ const { pool } = require("../db");
 const { createOtp, verifyOtp, sendEmailOtp, sendSmsOtp } = require("../utils/otp");
 const { fullPermissions, emptyPermissions } = require("../utils/permissions");
 const { authenticate } = require("../middleware/auth");
+const { recordAccess } = require("../middleware/audit");
 
 const router = express.Router();
 
-const ADMIN_USER_ID = process.env.ADMIN_BOOTSTRAP_USER_ID || "pratik";
-const ADMIN_EMAIL = (process.env.ADMIN_BOOTSTRAP_EMAIL || "ganatra.p@gmail.com").toLowerCase();
+const ADMIN_USER_ID = process.env.ADMIN_BOOTSTRAP_USER_ID || null;
+const ADMIN_EMAIL = process.env.ADMIN_BOOTSTRAP_EMAIL ? process.env.ADMIN_BOOTSTRAP_EMAIL.toLowerCase() : null;
+if (!ADMIN_USER_ID || !ADMIN_EMAIL) {
+  console.warn("[startup] ADMIN_BOOTSTRAP_USER_ID / ADMIN_BOOTSTRAP_EMAIL are not set — no account can self-activate as Admin until these are configured in the environment.");
+}
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 // Slows down guessing attacks against passwords and OTP codes without
@@ -48,11 +52,12 @@ router.post("/register", registerLimiter, async (req, res) => {
     const r = await pool.query(
       `INSERT INTO users (user_id, password_hash, name, role, email, status, permissions)
        VALUES ($1,$2,$3,'Admin',$4,'pending_otp',$5) RETURNING *`,
-      [userId, passwordHash, name || "Dr. Bhavisha Pratik Ganatra", email, JSON.stringify(fullPermissions())]
+      [userId, passwordHash, name || "Admin", email, JSON.stringify(fullPermissions())]
     );
     const user = r.rows[0];
     const code = await createOtp(pool, user.id, "admin_verify");
     const result = await sendEmailOtp(email, code);
+    recordAccess({ userId: user.id, label: `${user.name || user.user_id} (${user.user_id})`, module: "auth", action: "register", method: "POST", path: "/api/auth/register" });
     return res.status(201).json({
       requiresOtp: true, channel: "email", userId: user.user_id,
       message: result.sent
@@ -72,6 +77,7 @@ router.post("/register", registerLimiter, async (req, res) => {
      VALUES ($1,$2,$3,NULL,$4,$5,'pending_approval',$6) RETURNING *`,
     [userId, passwordHash, name || userId, email || null, mobile, JSON.stringify(emptyPermissions())]
   );
+  recordAccess({ userId: r.rows[0].id, label: `${r.rows[0].name || r.rows[0].user_id} (${r.rows[0].user_id})`, module: "auth", action: "register", method: "POST", path: "/api/auth/register" });
   res.status(201).json({
     requiresOtp: false,
     message: "Registered — an administrator needs to approve your account and set your access before you can log in.",
@@ -91,6 +97,7 @@ router.post("/verify-admin-otp", otpVerifyLimiter, async (req, res) => {
     `UPDATE users SET status = 'active' WHERE id = $1 RETURNING *`, [user.id]
   );
   const u = updated.rows[0];
+  recordAccess({ userId: u.id, label: `${u.name || u.user_id} (${u.user_id})`, module: "auth", action: "login", method: "POST", path: "/api/auth/verify-admin-otp" });
   res.json({ token: issueToken(u), user: publicUser(u) });
 });
 
@@ -109,6 +116,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   if (user.status === "pending_otp") return res.status(403).json({ error: "Verify your admin email code before logging in." });
   if (user.status === "pending_approval") return res.status(403).json({ error: "Your account is awaiting administrator approval." });
 
+  recordAccess({ userId: user.id, label: `${user.name || user.user_id} (${user.user_id})`, module: "auth", action: "login", method: "POST", path: "/api/auth/login" });
   res.json({ token: issueToken(user), user: publicUser(user) });
 });
 
@@ -179,6 +187,7 @@ router.post("/reset-password", otpVerifyLimiter, async (req, res) => {
   if (!result.ok) return res.status(400).json({ error: result.reason });
   const hash = await bcrypt.hash(newPassword, 12);
   await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [hash, user.id]);
+  recordAccess({ userId: user.id, label: `${user.name || user.user_id} (${user.user_id})`, module: "auth", action: "password_reset", method: "POST", path: "/api/auth/reset-password" });
   res.json({ message: "Password updated — you can log in now." });
 });
 

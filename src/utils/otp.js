@@ -7,6 +7,10 @@ const OTP_TTL_MINUTES = 10;
 // this keeps the whole flow testable before you've connected a real
 // email/SMS provider. Set DEMO_OTP_MODE=false once real credentials are in.
 const DEMO_OTP_MODE = process.env.DEMO_OTP_MODE !== "false";
+// Shown in OTP email/SMS text ("Your X verification code is..."). Set this
+// per deployment so a new clinic's staff don't see a different clinic's name
+// in their verification messages.
+const CLINIC_DISPLAY_NAME = process.env.CLINIC_DISPLAY_NAME || "Clinic ERP";
 
 function generateCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
@@ -54,7 +58,7 @@ async function sendEmailOtp(email, code) {
     await transport.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to: email,
-      subject: "Your Ganatra Clinic verification code",
+      subject: `Your ${CLINIC_DISPLAY_NAME} verification code`,
       text: `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
     });
     return { sent: true };
@@ -89,7 +93,7 @@ async function sendSmsOtp(mobile, code) {
     await twilio.messages.create({
       from: process.env.TWILIO_FROM_NUMBER,
       to: toE164India(mobile),
-      body: `Your Ganatra Clinic verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+      body: `Your ${CLINIC_DISPLAY_NAME} verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
     });
     return { sent: true };
   } catch (e) {

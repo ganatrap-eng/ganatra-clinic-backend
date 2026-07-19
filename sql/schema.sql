@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS clinic_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  clinic_name VARCHAR(150) NOT NULL DEFAULT 'Ganatra Clinic',
-  proprietor VARCHAR(150) NOT NULL DEFAULT 'Dr. Bhavisha Pratik Ganatra',
+  clinic_name VARCHAR(150) NOT NULL DEFAULT 'Your Clinic',
+  proprietor VARCHAR(150) NOT NULL DEFAULT '',
   address TEXT,
   phone VARCHAR(30),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -138,5 +138,5 @@ CREATE TABLE IF NOT EXISTS capital_transactions (
 );
 
 INSERT INTO clinic_settings (clinic_name, proprietor)
-SELECT 'Ganatra Clinic', 'Dr. Bhavisha Pratik Ganatra'
+SELECT 'Your Clinic', ''
 WHERE NOT EXISTS (SELECT 1 FROM clinic_settings);

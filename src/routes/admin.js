@@ -2,6 +2,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requireRole } = require("../middleware/auth");
 const { MODULES, LEVELS } = require("../utils/permissions");
+const { logAccess } = require("../middleware/audit");
 
 const router = express.Router();
 router.use(requireRole("Admin"));
@@ -16,7 +17,7 @@ router.get("/users", async (req, res) => {
 });
 
 // PUT /api/admin/users/:id/permissions  { role, permissions, doctorId, activate }
-router.put("/users/:id/permissions", async (req, res) => {
+router.put("/users/:id/permissions", logAccess("admin"), async (req, res) => {
   const { role, permissions, doctorId, activate } = req.body;
   if (permissions) {
     for (const m of MODULES) {
@@ -45,7 +46,7 @@ router.put("/users/:id/permissions", async (req, res) => {
 });
 
 // PUT /api/admin/users/:id/deactivate
-router.put("/users/:id/deactivate", async (req, res) => {
+router.put("/users/:id/deactivate", logAccess("admin"), async (req, res) => {
   if (req.params.id === req.user.sub) return res.status(400).json({ error: "You can't deactivate your own account." });
   await pool.query(`UPDATE users SET status = 'pending_approval' WHERE id = $1`, [req.params.id]);
   res.status(204).end();

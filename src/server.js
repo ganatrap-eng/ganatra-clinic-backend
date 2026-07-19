@@ -105,5 +105,5 @@ const port = process.env.PORT || 4000;
 runMigrations()
   .catch((e) => console.error("Migration runner failed:", e))
   .finally(() => {
-    app.listen(port, () => console.log(`Ganatra Clinic API listening on port ${port}`));
+    app.listen(port, () => console.log(`Clinic ERP API listening on port ${port}`));
   });
