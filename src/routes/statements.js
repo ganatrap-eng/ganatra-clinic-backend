@@ -2,7 +2,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requirePermission } = require("../middleware/permissions");
 const { logAccess } = require("../middleware/audit");
-const { fyRange, fyOf, assetDepForFY, assetWDVAsOf } = require("../utils/depreciation");
+const { fyRange, assetDepForFY, assetWDVAsOf, depreciationForRange } = require("../utils/depreciation");
 const router = express.Router();
 
 const EXPENSE_CATEGORIES = [
@@ -39,8 +39,7 @@ router.get("/income", requirePermission("statements", "view"), logAccess("statem
   const doctorFees = await sumBetween("doctor_pays", "pay_date", "amount", start, end);
 
   const assetsR = await pool.query("SELECT * FROM fixed_assets");
-  const depreciationFY = customRange ? fyOf(end) : fy;
-  const depreciation = assetsR.rows.reduce((s, a) => s + assetDepForFY(a, depreciationFY).dep, 0);
+  const depreciation = customRange ? depreciationForRange(assetsR.rows, start, end) : assetsR.rows.reduce((s, a) => s + assetDepForFY(a, fy).dep, 0);
 
   const expenseRows = [
     { name: "Doctor Fees (Shift Pay)", amount: doctorFees },

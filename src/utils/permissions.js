@@ -1,4 +1,4 @@
-const MODULES = ["cases", "collections", "doctorPay", "referrals", "gifts", "expenses", "assets", "statements", "auditLog"];
+const MODULES = ["cases", "collections", "doctorPay", "referrals", "gifts", "expenses", "assets", "statements", "auditLog", "bankRecon"];
 const LEVELS = ["none", "view", "write", "edit", "delete"];
 
 function emptyPermissions() {

@@ -76,4 +76,33 @@ function assetWDVAsOf(asset, targetDate) {
   return { wdv, cumDep: Number(asset.cost) - wdv, acquired: true };
 }
 
-module.exports = { fyOf, fyRange, nextFY, prevFY, daysBetween, assetDepForFY, assetWDVAsOf };
+/** Depreciation for a set of assets over an arbitrary [start,end] range —
+ *  used for custom-period Income Statement reports. Depreciation under the
+ *  WDV method is inherently an annual figure, so a sub-year range gets its
+ *  share via straight-line time-apportionment of each overlapping FY's full
+ *  depreciation charge. Previously, a custom range just showed the ENTIRE
+ *  FY's depreciation regardless of how short the range was — e.g. a single
+ *  month showed a full 12 months' worth, overstating expenses roughly 12x
+ *  for that period. A range spanning multiple FYs correctly sums each FY's
+ *  prorated share. */
+function depreciationForRange(assets, start, end) {
+  let total = 0;
+  let fy = fyOf(start);
+  const endFY = fyOf(end);
+  let guard = 0;
+  while (guard < 60) {
+    guard++;
+    const { start: fyStart, end: fyEnd } = fyRange(fy);
+    const overlapStart = start > fyStart ? start : fyStart;
+    const overlapEnd = end < fyEnd ? end : fyEnd;
+    const overlapDays = Math.max(0, daysBetween(overlapStart, overlapEnd));
+    const fyDays = daysBetween(fyStart, fyEnd);
+    const fyDep = assets.reduce((s, a) => s + assetDepForFY(a, fy).dep, 0);
+    total += fyDep * (overlapDays / fyDays);
+    if (fy === endFY) break;
+    fy = nextFY(fy);
+  }
+  return total;
+}
+
+module.exports = { fyOf, fyRange, nextFY, prevFY, daysBetween, assetDepForFY, assetWDVAsOf, depreciationForRange };
