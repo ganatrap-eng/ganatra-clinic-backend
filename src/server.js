@@ -37,6 +37,13 @@ if (allowAllOrigins) {
 }
 app.use(cors({ origin: allowAllOrigins ? true : corsOrigins }));
 app.use(express.json({ limit: "2mb" }));
+// This API has no cacheable GET endpoints — every figure (collections,
+// expenses, financial statements, etc.) needs to reflect the current
+// database state on every request. Without this, a browser can serve a
+// stale cached response for an identical GET URL (e.g. re-opening the
+// Income Statement for the same FY after adding a new pay entry), showing
+// numbers that were correct a moment ago but no longer are.
+app.use("/api", (req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 // A generous ceiling across the whole API — this isn't meant to affect real
 // usage (a clinic's normal traffic is nowhere near this), just to blunt any
 // scraping or automated-abuse attempt, even from a valid logged-in session.
